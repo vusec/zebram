@@ -1,0 +1,22 @@
+--- /home/vuzzer/bench_mark_kernel/linux-4.4.0/init/main.c	2016-01-11 00:01:32.000000000 +0100
++++ init/main.c	2018-02-05 01:21:35.530423634 +0100
+@@ -88,6 +88,12 @@
+ #include <asm/sections.h>
+ #include <asm/cacheflush.h>
+ 
++char *reserved_mem_zebra = NULL;
++char *reserved_mem_zebra_2 = NULL;
++EXPORT_SYMBOL(reserved_mem_zebra);
++EXPORT_SYMBOL(reserved_mem_zebra_2);
++#define ZEBRA_ONE_GB 1073741824
++
+ static int kernel_init(void *);
+ 
+ extern void init_IRQ(void);
+@@ -547,6 +553,26 @@ asmlinkage __visible void __init start_k
+ 	jump_label_init();
++	reserved_mem_zebra  = alloc_bootmem_low_pages(ZEBRA_ONE_GB);
++	reserved_mem_zebra_2  = alloc_bootmem_low_pages(ZEBRA_ONE_GB);
+ 	/*
+ 	 * These use large bootmem allocations and must precede
+ 	 * kmem_cache_init()

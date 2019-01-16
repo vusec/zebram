@@ -1,0 +1,179 @@
+diff -upr /home/vuzzer/qemuuuu/qemu-2.11.0/util/mmap-alloc.c qemu-2.11.0/util/mmap-alloc.c
+--- /home/vuzzer/qemuuuu/qemu-2.11.0/util/mmap-alloc.c	2017-12-13 18:27:20.000000000 +0100
++++ qemu-2.11.0/util/mmap-alloc.c	2018-03-23 16:52:23.540631719 +0100
+@@ -14,12 +14,33 @@
+ #include "qemu/mmap-alloc.h"
+ #include "qemu/host-utils.h"
+ 
++#include "arena.h"
++#include "arena_mgmt.h"
++#include "map.h"
++
++#include <ramses/resolve.h>
++
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <errno.h>
++
++#include <time.h>
++
+ #define HUGETLBFS_MAGIC       0x958458f6
+ 
+ #ifdef CONFIG_LINUX
+ #include <sys/vfs.h>
+ #endif
+ 
++static struct MasterArena ma;
++static struct MemorySystem msys;
++static ticketid_t tick;
++static struct ArenaStats st;
++static int first_allocation_flag = 0;
++
++
++
+ size_t qemu_fd_getpagesize(int fd)
+ {
+ #ifdef CONFIG_LINUX
+@@ -72,6 +93,195 @@ void *qemu_ram_mmap(int fd, size_t size,
+      * space, even if size is already aligned.
+      */
+     size_t total = size + align;
++
++        // First allocation is for main memory
++
++        if(first_allocation_flag == 0)
++        {
++                first_allocation_flag = 1;
++
++                FILE *msysf = fopen("/tmp/mem.msys", "r");
++                if ( msysf != NULL) {
++                        if (ramses_memsys_load_file(msysf, &msys, stdout)) {
++                                perror("Error parsing msys file");
++                                return NULL;
++                        }
++                        fclose(msysf);
++                } else {
++                        perror("Cannot open msys file");
++                        return NULL;
++                }
++
++
++                if (arena_create(&msys, size/2, 1, &ma, &st)) {
++                        perror("Arena create error");
++                        return NULL;
++                }
++
++                size_t size_half_inpages = (size / 4096) /2;
++                offslen = size_half_inpages;
++                offslen_g = size_half_inpages;
++
++
++                off_t *offs=  (off_t *)malloc(sizeof(off_t) * offslen);
++                off_t *offs_g=  (off_t *)malloc(sizeof(off_t) * offslen_g);
++
++                memset(offs, 0, offslen * sizeof(off_t));
++                memset(offs_g, 0, offslen_g * sizeof(off_t));
++
++                tick = arena_reserve(&(ma.arena), 0);
++                errno = 0;
++                void *ptr = mmap(0, total, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
++
++                if (ptr == MAP_FAILED) {
++                                return MAP_FAILED;
++                }
++
++                if (tick) {
++                        arena_get_data(&(ma.arena), tick, offs, offslen);
++                        arena_get_guard(&(ma.arena), tick, offs_g, offslen_g);
++
++                        size_t offset = QEMU_ALIGN_UP((uintptr_t)ptr, align) - (uintptr_t)ptr;
++
++                        /* Make sure align is a power of 2 */
++                        assert(!(align & (align - 1)));
++                        /* Always align to host page size */
++                        assert(align >= getpagesize());
++
++                        ptr = ptr + offset;
++                        void *ptr1  = ptr;
++
++                        size_t i = 0;
++                        for (i = 0; i < offslen/2; i++) {
++                                ptr = mmap(ptr,  ma.arena.page_size,
++                                                PROT_READ|PROT_WRITE, MAP_SHARED|MAP_FIXED,
++                                                ma.arena.mfd, *(offs+i));
++
++                                if((i == 0)){
++                                        ptr1 = ptr;
++                                }
++                                if ((void *)ptr == MAP_FAILED) {
++                                        (void) munmap(ptr - offset, total);
++                                        return  MAP_FAILED;
++                                        break;
++                                } else {
++                                        memset(ptr, 'S', ma.arena.page_size);
++                                        ptr += ma.arena.page_size;
++                                }
++                        }
++
++
++			// Placing guard memory region at a position where the guest machine reserve at boot time using alloc_bootmem_low_pages function 
++
++
++                        for (i= 0; i < (offslen_g) ; i++) {
++                                ptr = mmap(ptr,  ma.arena.page_size,
++                                                PROT_READ|PROT_WRITE, MAP_SHARED|MAP_FIXED,
++                                                ma.arena.mfd, *(offs_g+i));
++
++                                if ((void *)ptr == MAP_FAILED) {
++                                        (void) munmap(ptr - offset, total);
++                                        return  MAP_FAILED;
++                                        break;
++                                } else {
++                                        ptr += ma.arena.page_size;
++                                }
++                        }
++
++                        for (i = offslen/2 ; i < offslen; i++) {
++                                ptr = mmap(ptr,  ma.arena.page_size,
++                                                PROT_READ|PROT_WRITE, MAP_SHARED|MAP_FIXED,
++                                                ma.arena.mfd, *(offs+i));
++
++                                if ((void *)ptr == MAP_FAILED) {
++                                        (void) munmap(ptr - offset, total);
++                                        return  MAP_FAILED;
++                                        break;
++                                } else {
++                                        memset(ptr, 'S', ma.arena.page_size);
++                                        ptr += ma.arena.page_size;
++                                }
++                        }
++
++
++                        total -= offset;
++                        ptr = ptr1;
++
++                        if (offset > 0) {
++                                munmap(ptr - offset, offset);
++                        }
++
++
++                        if (total > size + getpagesize()) {
++                                munmap(ptr + size + getpagesize(), total - size - getpagesize());
++                        }
++
++
++                        if (ptr == MAP_FAILED) {
++                                perror("Mapping failed");
++                        } 
++                } else {
++                        perror("Ticket reservation error");
++                }
++
++                free(offs);
++                free(offs_g);
++
++                return ptr;
++        }
++
++
