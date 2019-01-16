@@ -1,5 +1,5 @@
-diff -upr /home/vuzzer/qemuuuu/qemu-2.11.0/util/mmap-alloc.c qemu-2.11.0/util/mmap-alloc.c
---- /home/vuzzer/qemuuuu/qemu-2.11.0/util/mmap-alloc.c	2017-12-13 18:27:20.000000000 +0100
+diff -upr original/qemu-2.11.0/util/mmap-alloc.c qemu-2.11.0/util/mmap-alloc.c
+--- original/qemu-2.11.0/util/mmap-alloc.c	2017-12-13 18:27:20.000000000 +0100
 +++ qemu-2.11.0/util/mmap-alloc.c	2018-03-23 16:52:23.540631719 +0100
 @@ -14,12 +14,33 @@
  #include "qemu/mmap-alloc.h"
