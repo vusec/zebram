@@ -1,4 +1,4 @@
---- /home/vuzzer/bench_mark_kernel/linux-4.4.0/init/main.c	2016-01-11 00:01:32.000000000 +0100
+--- linux-4.4.0/init/main.c	2016-01-11 00:01:32.000000000 +0100
 +++ init/main.c	2018-02-05 01:21:35.530423634 +0100
 @@ -88,6 +88,12 @@
  #include <asm/sections.h>
